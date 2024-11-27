@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from .config import create_database_url
 
-engine = create_async_engine(create_database_url())
+
+database_url = create_database_url()
+engine = create_async_engine(database_url)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 str_not_none = Annotated[str, mapped_column(nullable=False)]

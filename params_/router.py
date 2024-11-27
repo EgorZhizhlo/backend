@@ -39,11 +39,11 @@ async def get_params(
 
 @params_router.put("/change", response_model=ParamsSchema)
 async def update_params(
-    params_update: ParamsCreate,  # Pydantic schema for updating Params
-    auth_token: str = Cookie(None),  # Load token from cookie
-    db: AsyncSession = Depends(get_db),  # Database session
+    params_update: ParamsCreate,
+    auth_token: str = Cookie(None),
+    db: AsyncSession = Depends(get_db),
 ):
-    # Validate token existence
+
     if not auth_token:
         raise HTTPException(
             status_code=400, detail="Token is required in the cookie")
@@ -61,7 +61,6 @@ async def update_params(
             status_code=404,
             detail="Session or Params not found for the provided token")
 
-    # Update the Params object
     db_params = db_session.params
     for key, value in params_update.dict(exclude_unset=True).items():
         setattr(db_params, key, value)

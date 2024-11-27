@@ -9,12 +9,13 @@ class Params(Base):
 
     font: Mapped[str_not_none]
     font_color: Mapped[str_not_none]
+    font_size: Mapped[int_not_none]
     logo: Mapped[str_not_none]
     bg_color: Mapped[str_not_none]
     reply_color: Mapped[str_not_none]
     request_color: Mapped[str_not_none]
 
-    sessions: Mapped[list["Session"]] = relationship(
+    sessions: Mapped["Session"] = relationship(
         "Session", back_populates="params")
 
     extend_existing = True
