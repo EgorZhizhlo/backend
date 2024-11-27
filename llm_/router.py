@@ -21,7 +21,6 @@ async def load_and_ind_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-
     if file.size > 100 * 1024 * 1024:
         raise HTTPException(
             status_code=400, detail="File size exceeds the limit of 10 MB")
