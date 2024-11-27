@@ -16,7 +16,7 @@ class Params(Base):
 
     sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="params")
-    
+
     extend_existing = True
 
 
@@ -28,9 +28,9 @@ class Session(Base):
     params_id: Mapped[int] = mapped_column(ForeignKey("params.id"))
 
     params: Mapped[Params] = relationship("Params", back_populates="sessions")
-    files: Mapped[list["Files"]] = relationship(
+    files: Mapped["Files"] = relationship(
         "Files", back_populates="session")
-    
+
     extend_existing = True
 
 

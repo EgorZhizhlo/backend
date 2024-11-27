@@ -15,6 +15,12 @@ app.mount(
     name="static"
 )
 
+app.mount(
+    "/media",
+    StaticFiles(directory=os.path.join(BASE_DIR, "media")),
+    name="media"
+)
+
 
 @app.on_event("startup")
 async def on_startup():

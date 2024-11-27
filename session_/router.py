@@ -38,8 +38,3 @@ async def create_session(
     response.set_cookie(key="auth_token", value=new_token,
                         httponly=True, max_age=TOKEN_EXPIRATION)
     return {"message": "Token generated and saved to cookie", "token": new_token}
-
-
-@session_router.get('/get')
-async def get_session():
-    return {}
