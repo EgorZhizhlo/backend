@@ -39,7 +39,6 @@ class Files(Base):
     __tablename__ = "files"
 
     session_id: Mapped[int] = mapped_column(ForeignKey("session.id"))
-    file: Mapped[str_not_none]
     text: Mapped[bytes] = mapped_column(LargeBinary)
 
     session: Mapped[Session] = relationship("Session", back_populates="files")

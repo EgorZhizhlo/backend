@@ -1,15 +1,15 @@
-import os
-from core import BASE_DIR
+import tempfile
 from fastapi import (
-    APIRouter, Request, File,
+    APIRouter, File, Body,
     UploadFile, Cookie, HTTPException, Depends
 )
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
-from werkzeug.utils import secure_filename
 from app import Session, Files
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from core import get_db, verify_token
+from .text_extractors import TextFileExtractor, TextUrlExtractor
 
 
 llm_router = APIRouter()
@@ -21,51 +21,120 @@ async def load_and_ind_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
+
     if file.size > 100 * 1024 * 1024:
         raise HTTPException(
-            status_code=400, detail="File size exceeds the limit of 10 MB")
+            status_code=400, detail="File size exceeds the limit of 100 MB")
 
+    # Проверяем наличие токена
     if not auth_token:
         raise HTTPException(
-            status_code=400, detail="Token is required in the cookie")
+            status_code=400, detail="Token is required in the cookie"
+        )
 
+    # Проверяем валидность токена
     enc_token = verify_token(auth_token)
 
+    # Проверяем существование сессии и параметров
     session_result = await db.execute(
         select(Session).options(selectinload(Session.params)).where(
-            Session.token == enc_token)
+            Session.token == enc_token
+        )
     )
     db_session = session_result.scalar_one_or_none()
 
     if not db_session or not db_session.params:
         raise HTTPException(
             status_code=404,
-            detail="Session or Params not found for the provided token")
+            detail="Session or Params not found for the provided token"
+        )
 
     session_id = db_session.id
 
-    media_dir = os.path.join(BASE_DIR, "media")
-    safe_filename = secure_filename(file.filename)
-    file_extension = os.path.splitext(safe_filename)[1]
-    file_location = os.path.join(media_dir, f"{db_session.uuid}{file_extension}")
+    try:
+        original_filename = Path(file.filename)
+        suffix = original_filename.suffix
+
+        if suffix.lower() not in [".pdf", ".docx", ".txt"]:
+            raise ValueError(f"Недопустимый формат файла: {suffix}")
+
+        with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=suffix
+        ) as temp_file:
+            temp_file.write(await file.read())
+            temp_file_path = Path(temp_file.name)
+
+        content = TextFileExtractor.extract_text(str(temp_file_path))
+
+        temp_file_path.unlink()
+
+        new_file = Files(
+            session_id=session_id,
+            text=content
+        )
+        db.add(new_file)
+        await db.commit()
+        await db.refresh(new_file)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail=f"Ошибка при обработке файла: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при загрузке файла: {str(e)}"
+        )
+
+    return {"message": f"Файл '{original_filename.name}' успешно обработан и сохранен"}
+
+
+@llm_router.post('/load_url')
+async def load_and_ind_url(
+    auth_token: str = Cookie(None),
+    url: str = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+
+    if not auth_token:
+        raise HTTPException(
+            status_code=400, detail="Token is required in the cookie"
+        )
+
+    enc_token = verify_token(auth_token)
+
+    session_result = await db.execute(
+        select(Session).options(selectinload(Session.params)).where(
+            Session.token == enc_token
+        )
+    )
+    db_session = session_result.scalar_one_or_none()
+
+    if not db_session or not db_session.params:
+        raise HTTPException(
+            status_code=404,
+            detail="Session or Params not found for the provided token"
+        )
+
+    session_id = db_session.id
 
     try:
-        with open(file_location, "wb") as f:
-            content = await file.read()
-            new_file = Files(
-                session_id=session_id,
-                file=f"media/{db_session.uuid}{file_extension}",
-                text=content
-            )
-            db.add(new_file)
-            await db.commit()
-            await db.refresh(new_file)
-            f.write(content)
+        content = await TextUrlExtractor.extract_text(url)
 
-    except Exception:
-        raise HTTPException(status_code=500, detail="File upload failed")
+        new_file = Files(
+            session_id=session_id,
+            text=content
+        )
+        db.add(new_file)
+        await db.commit()
+        await db.refresh(new_file)
 
-    return {"filepath": f"media/{db_session.uuid}{file_extension}"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error processing URL: {str(e)}"
+        )
+
+    return {"message": f"Content from URL '{url}' successfully processed and saved"}
 
 
 @llm_router.post('/request')

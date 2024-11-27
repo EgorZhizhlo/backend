@@ -18,6 +18,7 @@ async def create_session(
     new_params = Params(
         font="Arial",
         font_color="#000000",
+        font_size=20,
         logo="https://example.com/logo.png",
         bg_color="#FFFFFF",
         reply_color="#00FF00",
