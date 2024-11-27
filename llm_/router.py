@@ -1,3 +1,4 @@
+import aiohttp
 import tempfile
 from fastapi import (
     APIRouter, File, Body,
@@ -13,6 +14,20 @@ from .text_extractors import TextFileExtractor, TextUrlExtractor
 
 
 llm_router = APIRouter()
+
+
+async def add_request_to_llm(session_token: str, text: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            'http://localhost:8000/add-document',
+            json={"session_token": session_token, "text": text}
+        ) as response:
+            if response.status != 200:
+                raise HTTPException(
+                    status_code=response.status,
+                    detail=await response.text()
+                )
+            return await response.json()
 
 
 @llm_router.post('/load_file')
@@ -71,12 +86,13 @@ async def load_and_ind_file(
 
         new_file = Files(
             session_id=session_id,
-            text=content
+            text=content.encode("utf-8")
         )
+
+        await add_request_to_llm(db_session.token, content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)
-
     except ValueError as e:
         raise HTTPException(
             status_code=400, detail=f"Ошибка при обработке файла: {str(e)}"
@@ -123,8 +139,9 @@ async def load_and_ind_url(
 
         new_file = Files(
             session_id=session_id,
-            text=content
+            text=content.encode("utf-8")
         )
+        await add_request_to_llm(auth_token, content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)

@@ -12,7 +12,7 @@ class TextFileExtractor:
     """
 
     @staticmethod
-    def extract_text(file_path: str) -> bytes:
+    def extract_text(file_path: str) -> str:
         """
         Извлекает текст из файла указанного типа и возвращает его в бинарном формате (blob).
 
@@ -36,7 +36,7 @@ class TextFileExtractor:
             raise ValueError(f"Формат файла не поддерживается: {file_extension}")
 
         # Преобразуем текст в бинарный формат
-        return text.encode("utf-8")
+        return text
 
     @staticmethod
     def _extract_from_pdf(file_path: str) -> str:
@@ -87,7 +87,7 @@ class TextFileExtractor:
 
 class TextUrlExtractor:
     @staticmethod
-    async def extract_text(url: str) -> bytes:
+    async def extract_text(url: str) -> str:
         # Fetch content from the URL using aiohttp
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -104,7 +104,7 @@ class TextUrlExtractor:
         cleaned_text = TextUrlExtractor.clean_text(text)
 
         # Convert the cleaned text to UTF-8 bytes
-        return cleaned_text.encode('utf-8')
+        return cleaned_text
 
     @staticmethod
     def clean_text(text: str) -> str:
