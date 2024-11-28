@@ -29,8 +29,8 @@ def create_database_url():
             f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}")
 
 
-SECRET_KEY = settings.SECRET_KEY
-SALT = settings.SALT
+SECRET_KEY = settings.SECRET_KEY.lower()
+SALT = settings.SALT.lower()
 TOKEN_EXPIRATION = settings.TOKEN_EXPIRATION
 
 serializer = URLSafeTimedSerializer(SECRET_KEY)
@@ -42,7 +42,7 @@ def generate_random_data() -> str:
     length = 64
     """Generate a random string of fixed length."""
     characters = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(characters) for _ in range(length))
+    return ''.join(secrets.choice(characters) for _ in range(length)).lower()
 
 
 def create_token(data):

@@ -19,7 +19,7 @@ llm_router = APIRouter()
 async def add_request_to_llm(session_token: str, text: str):
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            'http://localhost:8000/add-document',
+            'http://app:8000/add-document',
             json={"session_token": session_token, "text": text}
         ) as response:
             if response.status != 200:
@@ -89,7 +89,7 @@ async def load_and_ind_file(
             text=content.encode("utf-8")
         )
 
-        await add_request_to_llm(db_session.token, content)
+        await add_request_to_llm(str(session_id), content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)
@@ -141,7 +141,7 @@ async def load_and_ind_url(
             session_id=session_id,
             text=content.encode("utf-8")
         )
-        await add_request_to_llm(auth_token, content)
+        await add_request_to_llm(str(session_id), content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)
