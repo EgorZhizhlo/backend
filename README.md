@@ -62,4 +62,4 @@
     docker compose exec <название контейнера API> alembic --autogenerate -m "Create database migrations"
     docker compose exec <название контейнера API> alembic upgrade head
 
-##### После запуска проект будет располагаться по адрессу http://<твой ip или localhost>
+##### После запуска проект будет располагаться по адрессу http://<твой ip или localhost>:81
