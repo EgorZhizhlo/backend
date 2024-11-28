@@ -30,6 +30,21 @@ async def add_request_to_llm(session_token: str, text: str):
             return await response.json()
 
 
+async def request_to_invoke_llm(session_token: str, question: str, base_prompt: str = None):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            'http://app:8000/invoke_llm',
+            json={"session_token": session_token,
+                  "question": question, "base_prompt": base_prompt}
+        ) as response:
+            if response.status != 200:
+                raise HTTPException(
+                    status_code=response.status,
+                    detail=await response.text()
+                )
+            return await response.json()
+
+
 @llm_router.post('/load_file')
 async def load_and_ind_file(
     auth_token: str = Cookie(None),
@@ -155,5 +170,38 @@ async def load_and_ind_url(
 
 
 @llm_router.post('/request')
-async def request_to_llm():
-    return {}
+async def request_to_llm(
+    auth_token: str = Cookie(None),
+    llm_request: str = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not auth_token:
+        raise HTTPException(
+            status_code=400, detail="Token is required in the cookie"
+        )
+
+    enc_token = verify_token(auth_token)
+
+    session_result = await db.execute(
+        select(Session).options(selectinload(Session.params)).where(
+            Session.token == enc_token
+        )
+    )
+    db_session = session_result.scalar_one_or_none()
+
+    if not db_session or not db_session.params:
+        raise HTTPException(
+            status_code=404,
+            detail="Session or Params not found for the provided token"
+        )
+
+    session_id = db_session.id
+
+    try:
+        answer = await request_to_invoke_llm(str(session_id), llm_request)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error: {str(e)}"
+        )
+    return answer
