@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, HTTPException, Cookie
+from fastapi import APIRouter, Request, Depends, HTTPException, Cookie, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import ParamsSchema, ParamsCreate, Params, Session
 from sqlalchemy.future import select
@@ -11,20 +11,18 @@ params_router = APIRouter()
 
 @params_router.get("/get", response_model=ParamsSchema)
 async def get_params(
-    auth_token: str = Cookie(None),
+    uuid_token: str = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
 
-    if not auth_token:
+    if not uuid_token:
         raise HTTPException(
-            status_code=400, detail="Token is required in the cookie")
-
-    enc_token = verify_token(auth_token)
+            status_code=400, detail="Token is required")
 
     result = await db.execute(
         select(Params)
         .join(Session)
-        .where(Session.token == enc_token)
+        .where(Session.uuid == uuid_token)
         .options(selectinload(Params.sessions))
     )
 
@@ -46,7 +44,7 @@ async def update_params(
 
     if not auth_token:
         raise HTTPException(
-            status_code=400, detail="Token is required in the cookie")
+            status_code=400, detail="Token is required")
 
     enc_token = verify_token(auth_token)
 

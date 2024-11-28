@@ -1,7 +1,7 @@
 import aiohttp
 import tempfile
 from fastapi import (
-    APIRouter, File, Body,
+    APIRouter, File, Body, Query,
     UploadFile, Cookie, HTTPException, Depends
 )
 from pathlib import Path
@@ -11,6 +11,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from core import get_db, verify_token
 from .text_extractors import TextFileExtractor, TextUrlExtractor
+from pydantic import BaseModel
 
 
 llm_router = APIRouter()
@@ -20,7 +21,7 @@ async def add_request_to_llm(session_token: str, text: str):
     async with aiohttp.ClientSession() as session:
         async with session.post(
             'http://app:8000/add-document',
-            json={"session_token": session_token, "text": text}
+            params={"session_token": session_token, "text": text}
         ) as response:
             if response.status != 200:
                 raise HTTPException(
@@ -30,37 +31,31 @@ async def add_request_to_llm(session_token: str, text: str):
             return await response.json()
 
 
-async def request_to_invoke_llm(session_token: str, question: str, base_prompt: str = None):
+async def request_to_invoke_llm(session_token: str, question: str):
+    params = {"session_token": session_token, "question": question}
     async with aiohttp.ClientSession() as session:
         async with session.post(
             'http://app:8000/invoke_llm',
-            json={"session_token": session_token,
-                  "question": question, "base_prompt": base_prompt}
+            params=params
         ) as response:
             if response.status != 200:
                 raise HTTPException(
                     status_code=response.status,
-                    detail=await response.text()
+                    detail=str(params)
                 )
             return await response.json()
 
 
 @llm_router.post('/load_file')
 async def load_and_ind_file(
-    auth_token: str = Cookie(None),
-    file: UploadFile = File(...),
+    auth_token: str = Cookie(None),  # Запрос токена через параметры
+    file: UploadFile = File(...),  # Убираем свойства и меняем на Query
     db: AsyncSession = Depends(get_db),
 ):
 
     if file.size > 100 * 1024 * 1024:
         raise HTTPException(
             status_code=400, detail="File size exceeds the limit of 100 MB")
-
-    # Проверяем наличие токена
-    if not auth_token:
-        raise HTTPException(
-            status_code=400, detail="Token is required in the cookie"
-        )
 
     # Проверяем валидность токена
     enc_token = verify_token(auth_token)
@@ -104,7 +99,7 @@ async def load_and_ind_file(
             text=content.encode("utf-8")
         )
 
-        await add_request_to_llm(str(session_id), content)
+        await add_request_to_llm(db_session.uuid, content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)
@@ -122,15 +117,10 @@ async def load_and_ind_file(
 
 @llm_router.post('/load_url')
 async def load_and_ind_url(
-    auth_token: str = Cookie(None),
-    url: str = Body(...),
+    url: str = Query(...),  # Запрос URL через параметры
+    auth_token: str = Cookie(None),  # Запрос токена через параметры
     db: AsyncSession = Depends(get_db),
 ):
-
-    if not auth_token:
-        raise HTTPException(
-            status_code=400, detail="Token is required in the cookie"
-        )
 
     enc_token = verify_token(auth_token)
 
@@ -147,23 +137,22 @@ async def load_and_ind_url(
             detail="Session or Params not found for the provided token"
         )
 
-    session_id = db_session.id
-
     try:
         content = await TextUrlExtractor.extract_text(url)
 
         new_file = Files(
-            session_id=session_id,
+            session_id=db_session.id,
             text=content.encode("utf-8")
         )
-        await add_request_to_llm(str(session_id), content)
+        await add_request_to_llm(db_session.uuid, content)
         db.add(new_file)
         await db.commit()
         await db.refresh(new_file)
 
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error processing URL: {str(e)}"
+            status_code=500,
+            detail=f"Error processing URL: {str(e)}"
         )
 
     return {"message": f"Content from URL '{url}' successfully processed and saved"}
@@ -171,20 +160,14 @@ async def load_and_ind_url(
 
 @llm_router.post('/request')
 async def request_to_llm(
-    auth_token: str = Cookie(None),
-    llm_request: str = Body(...),
+    question: str = Query(...),
+    base_prompt: str = Query(None),
+    uuid_token: str = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    if not auth_token:
-        raise HTTPException(
-            status_code=400, detail="Token is required in the cookie"
-        )
-
-    enc_token = verify_token(auth_token)
-
     session_result = await db.execute(
         select(Session).options(selectinload(Session.params)).where(
-            Session.token == enc_token
+            Session.uuid == uuid_token
         )
     )
     db_session = session_result.scalar_one_or_none()
@@ -195,13 +178,26 @@ async def request_to_llm(
             detail="Session or Params not found for the provided token"
         )
 
-    session_id = db_session.id
-
     try:
-        answer = await request_to_invoke_llm(str(session_id), llm_request)
-
-    except Exception as e:
+        answer = await request_to_invoke_llm(uuid_token, question)
+    except Exception:
         raise HTTPException(
-            status_code=500, detail=f"Error: {str(e)}"
+            status_code=500, detail=f"Error: {question, type(question)}, {uuid_token}"
         )
     return answer
+
+
+@llm_router.get("/get_split")
+async def get_split(
+    uuid_token: str = Query(...)
+):
+    url = "http://app:8000/view-split-text"
+    params = {"session_token": uuid_token}  # Создание словаря с параметрами
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:  # Передача параметров в запрос
+            if response.status == 200:
+                data = await response.json()
+                return data
+            else:
+                raise HTTPException(status_code=response.status, detail="Error fetching data")
